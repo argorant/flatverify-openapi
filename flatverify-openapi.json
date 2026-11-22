@@ -1,0 +1,954 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Flatverify API",
+    "version": "1.0.0",
+    "summary": "Verify email addresses on a flat monthly plan.",
+    "description": "Flatverify checks whether an email address can receive mail. Every plan is unlimited; plans differ only in\nspeed (checks a minute). Verify one address in real time, or send a list of up to 200,000 addresses as a bulk\njob and read the results page by page or as CSV.\n\nCreate an API key in the app (https://app.flatverify.com, API keys) and send it as `Authorization: Bearer fv_...`.\nNew accounts get 100 free checks, no card.\n\nRate limits: when you send faster than your plan, the API answers 429 `rate_limited` with a Retry-After header\nin seconds. Wait that long and send again. A 503 `busy` also carries Retry-After.\n",
+    "contact": {
+      "name": "Flatverify support",
+      "url": "https://flatverify.com/docs",
+      "email": "support@argorant.com"
+    },
+    "termsOfService": "https://flatverify.com/terms",
+    "license": {
+      "name": "MIT (this description)",
+      "identifier": "MIT"
+    },
+    "x-logo": {
+      "url": "https://raw.githubusercontent.com/argorant/flatverify-openapi/main/flatverify-icon-512.png"
+    }
+  },
+  "externalDocs": {
+    "description": "Flatverify API docs",
+    "url": "https://flatverify.com/docs"
+  },
+  "servers": [
+    {
+      "url": "https://app.flatverify.com/api/v1"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Verify",
+      "description": "Verify one address in real time."
+    },
+    {
+      "name": "Bulk jobs",
+      "description": "Verify a list in the background and read the results."
+    },
+    {
+      "name": "Account",
+      "description": "Your plan and speed."
+    }
+  ],
+  "paths": {
+    "/verify": {
+      "post": {
+        "tags": [
+          "Verify"
+        ],
+        "operationId": "verifyEmail",
+        "summary": "Verify one email",
+        "description": "Verifies one address and returns the result in the same request. Best for signup forms and real time checks.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "description": "The address to verify.",
+                    "examples": [
+                      "maya.chen@amazon.com"
+                    ]
+                  }
+                }
+              },
+              "example": {
+                "email": "maya.chen@amazon.com"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyResult"
+                },
+                "examples": {
+                  "valid": {
+                    "summary": "A mailbox that accepts mail",
+                    "value": {
+                      "email": "maya.chen@amazon.com",
+                      "status": "valid",
+                      "sub_status": "accepted",
+                      "reason": null,
+                      "disposable": false,
+                      "role": false,
+                      "free": false,
+                      "catch_all": false
+                    }
+                  },
+                  "role": {
+                    "summary": "A shared role address",
+                    "value": {
+                      "email": "info@shopify.com",
+                      "status": "risky",
+                      "sub_status": "role_account",
+                      "reason": null,
+                      "disposable": false,
+                      "role": true,
+                      "free": false,
+                      "catch_all": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Busy"
+          }
+        }
+      }
+    },
+    "/verify/bulk": {
+      "post": {
+        "tags": [
+          "Bulk jobs"
+        ],
+        "operationId": "verifyBulk",
+        "summary": "Start a bulk job",
+        "description": "Sends a list of up to 200,000 addresses (16 MB of JSON at most) and returns a job. Duplicates and rows that\nare not email addresses are left out and counted in `skipped`. Up to 5 jobs can be open at once. Poll\nGET /jobs/{id} until `status` is `done`, then read GET /jobs/{id}/results.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "emails"
+                ],
+                "properties": {
+                  "emails": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 200000,
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "The addresses to verify."
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "A name for the job, shown in the app."
+                  }
+                }
+              },
+              "example": {
+                "emails": [
+                  "maya.chen@amazon.com",
+                  "j.ortiz@salesforce.com",
+                  "info@shopify.com"
+                ],
+                "name": "Q4 leads"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "The job was created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Job"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "skipped": {
+                          "type": "integer",
+                          "description": "Duplicates and rows that are not email addresses, left out of the job."
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "id": "8f2c41d0-5b7e-4c1a-9e3f-2a6d1b0c7e94",
+                  "name": "Q4 leads",
+                  "source": "api",
+                  "status": "queued",
+                  "waiting_reason": null,
+                  "total": 3,
+                  "processed": 0,
+                  "counts": {
+                    "valid": 0,
+                    "invalid": 0,
+                    "risky": 0,
+                    "unknown": 0
+                  },
+                  "created_at": "2026-11-22T10:00:00Z",
+                  "finished_at": null,
+                  "skipped": 0
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "413": {
+            "description": "Too many addresses (`too_many`) or a body over 16 MB (`too_large`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "too_many",
+                    "message": "Up to 200,000 addresses per job."
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many open jobs (`too_many_jobs`). Wait for one to finish.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "too_many_jobs",
+                    "message": "You already have 5 lists in progress. Wait for one to finish, then send the next."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs/{id}": {
+      "get": {
+        "tags": [
+          "Bulk jobs"
+        ],
+        "operationId": "getJob",
+        "summary": "Get a job",
+        "description": "Job status and counts. `status` is `done` when every address has a result.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/JobId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The job.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Job"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "results_url": {
+                          "type": "string",
+                          "description": "Path of the results endpoint for this job."
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "id": "8f2c41d0-5b7e-4c1a-9e3f-2a6d1b0c7e94",
+                  "name": "Q4 leads",
+                  "source": "api",
+                  "status": "done",
+                  "waiting_reason": null,
+                  "total": 3,
+                  "processed": 3,
+                  "counts": {
+                    "valid": 1,
+                    "invalid": 1,
+                    "risky": 1,
+                    "unknown": 0
+                  },
+                  "created_at": "2026-11-22T10:00:00Z",
+                  "finished_at": "2026-11-22T10:00:09Z",
+                  "results_url": "/api/v1/jobs/8f2c41d0-5b7e-4c1a-9e3f-2a6d1b0c7e94/results"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/jobs/{id}/results": {
+      "get": {
+        "tags": [
+          "Bulk jobs"
+        ],
+        "operationId": "getJobResults",
+        "summary": "Get job results",
+        "description": "With `format=json`, returns a page of up to 1,000 results in list order; pass the `next_after` value as\n`after` to read the next page (`next_after` is null on the last page). Without `format`, streams every\nresult as CSV with the header `email,status,sub_status,reason,disposable,role,free,catch_all`.\nRows that are not checked yet have status `pending`.\n",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/JobId"
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "description": "`json` for paged JSON. Leave it out for CSV.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json"
+              ]
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "description": "Row index to start after (the `next_after` of the previous page).",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of results (JSON) or the full results (CSV).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultsPage"
+                },
+                "example": {
+                  "results": [
+                    {
+                      "email": "maya.chen@amazon.com",
+                      "status": "valid",
+                      "sub_status": "accepted",
+                      "reason": null,
+                      "disposable": false,
+                      "role": false,
+                      "free": false,
+                      "catch_all": false
+                    },
+                    {
+                      "email": "no.one@stripe.com",
+                      "status": "invalid",
+                      "sub_status": "mailbox_not_found",
+                      "reason": null,
+                      "disposable": false,
+                      "role": false,
+                      "free": false,
+                      "catch_all": false
+                    }
+                  ],
+                  "next_after": null
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "email,status,sub_status,reason,disposable,role,free,catch_all\nmaya.chen@amazon.com,valid,accepted,,false,false,false,false\n"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/account": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "operationId": "getAccount",
+        "summary": "Get your account",
+        "description": "Your plan and its speed in checks a minute.",
+        "responses": {
+          "200": {
+            "description": "The account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                },
+                "example": {
+                  "plan": "growth",
+                  "limits": {
+                    "per_minute": 50
+                  },
+                  "usage": {
+                    "today": 1200,
+                    "this_minute": 4
+                  },
+                  "free_checks_left": 0
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Your Flatverify API key (fv_...). The header `x-api-key: fv_...` works too."
+      }
+    },
+    "parameters": {
+      "JobId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "The job id from POST /verify/bulk.",
+        "schema": {
+          "type": "string",
+          "examples": [
+            "8f2c41d0-5b7e-4c1a-9e3f-2a6d1b0c7e94"
+          ]
+        }
+      }
+    },
+    "headers": {
+      "X-RateLimit-Limit": {
+        "description": "Checks a minute on your plan.",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "X-RateLimit-Remaining": {
+        "description": "Checks left in the current minute.",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "Retry-After": {
+        "description": "Seconds to wait before sending again.",
+        "schema": {
+          "type": "integer"
+        }
+      }
+    },
+    "schemas": {
+      "Status": {
+        "type": "string",
+        "enum": [
+          "valid",
+          "invalid",
+          "risky",
+          "unknown"
+        ],
+        "description": "valid: the mailbox exists and accepts mail. invalid: the address or domain cannot receive mail.\nrisky: it may work but needs care, sub_status says why. unknown: no clear answer this time, try again later.\n"
+      },
+      "SubStatus": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Why the address got its status: accepted, role_account, catch_all, disposable, mailbox_not_found,\nno_mail_server, mailbox_full, possible_trap, unconfirmed, greylisted, timeout, antispam_system, no_answer,\nbad_syntax. New values may be added.\n",
+        "examples": [
+          "accepted",
+          "catch_all",
+          "mailbox_not_found"
+        ]
+      },
+      "VerifyResult": {
+        "type": "object",
+        "required": [
+          "email",
+          "status",
+          "sub_status",
+          "reason",
+          "disposable",
+          "role",
+          "free",
+          "catch_all"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "sub_status": {
+            "$ref": "#/components/schemas/SubStatus"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A short note when there is one."
+          },
+          "disposable": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "A throwaway address from a temporary inbox service."
+          },
+          "role": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "A shared address like info@, sales@ or support@."
+          },
+          "free": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "An address at a free mail provider."
+          },
+          "catch_all": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "The domain accepts mail for any address, so the mailbox cannot be confirmed."
+          }
+        }
+      },
+      "JobResult": {
+        "type": "object",
+        "required": [
+          "email",
+          "status",
+          "sub_status",
+          "reason",
+          "disposable",
+          "role",
+          "free",
+          "catch_all"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "valid",
+              "invalid",
+              "risky",
+              "unknown",
+              "pending"
+            ],
+            "description": "A result status, or `pending` for rows not checked yet."
+          },
+          "sub_status": {
+            "$ref": "#/components/schemas/SubStatus"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "disposable": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "role": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "free": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "catch_all": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "Counts": {
+        "type": "object",
+        "required": [
+          "valid",
+          "invalid",
+          "risky",
+          "unknown"
+        ],
+        "properties": {
+          "valid": {
+            "type": "integer"
+          },
+          "invalid": {
+            "type": "integer"
+          },
+          "risky": {
+            "type": "integer"
+          },
+          "unknown": {
+            "type": "integer"
+          }
+        }
+      },
+      "Job": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "source",
+          "status",
+          "waiting_reason",
+          "total",
+          "processed",
+          "counts",
+          "created_at",
+          "finished_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "description": "Where the job came from, `api` or `csv` (an upload in the app)."
+          },
+          "status": {
+            "type": "string",
+            "description": "`queued`, `running`, `waiting` (see waiting_reason) or `done` (final).",
+            "examples": [
+              "queued",
+              "running",
+              "waiting",
+              "done"
+            ]
+          },
+          "waiting_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "total": {
+            "type": "integer"
+          },
+          "processed": {
+            "type": "integer"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/Counts"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "ResultsPage": {
+        "type": "object",
+        "required": [
+          "results",
+          "next_after"
+        ],
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobResult"
+            }
+          },
+          "next_after": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Pass as `after` to read the next page; null on the last page."
+          }
+        }
+      },
+      "Account": {
+        "type": "object",
+        "required": [
+          "plan",
+          "limits",
+          "usage",
+          "free_checks_left"
+        ],
+        "properties": {
+          "plan": {
+            "type": "string",
+            "description": "Your plan id, or `trial`."
+          },
+          "limits": {
+            "type": "object",
+            "required": [
+              "per_minute"
+            ],
+            "properties": {
+              "per_minute": {
+                "type": "integer",
+                "description": "Checks a minute on your plan."
+              }
+            }
+          },
+          "usage": {
+            "type": "object",
+            "required": [
+              "today",
+              "this_minute"
+            ],
+            "properties": {
+              "today": {
+                "type": "integer"
+              },
+              "this_minute": {
+                "type": "integer"
+              }
+            }
+          },
+          "free_checks_left": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "A stable machine readable code."
+              },
+              "message": {
+                "type": "string",
+                "description": "A plain sentence for people."
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "The body is not valid JSON or the address is not valid (`invalid_json`, `invalid_email`, `invalid_request`).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": {
+                "code": "invalid_email",
+                "message": "That is not a valid email address."
+              }
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or wrong API key.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": {
+                "code": "unauthorized",
+                "message": "Send a valid API key as: Authorization: Bearer fv_..."
+              }
+            }
+          }
+        }
+      },
+      "PaymentRequired": {
+        "description": "The free checks are used up and there is no active plan.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": {
+                "code": "payment_required",
+                "message": "Your free checks are used up. Choose a plan at https://app.flatverify.com/billing to keep verifying, with no daily or monthly cap."
+              }
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "No job with this id on your account.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": {
+                "code": "not_found",
+                "message": "No job with this id."
+              }
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "Sent faster than your plan. Wait Retry-After seconds and send again.",
+        "headers": {
+          "Retry-After": {
+            "$ref": "#/components/headers/Retry-After"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": {
+                "code": "rate_limited",
+                "message": "Per minute limit reached. Retry after 12 seconds."
+              }
+            }
+          }
+        }
+      },
+      "Busy": {
+        "description": "Busy for a moment. Wait Retry-After seconds and send again.",
+        "headers": {
+          "Retry-After": {
+            "$ref": "#/components/headers/Retry-After"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": {
+                "code": "busy",
+                "message": "Verification is busy right now. Try again shortly."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
